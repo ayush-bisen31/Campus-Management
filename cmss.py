@@ -12,7 +12,7 @@ import json
 DB_CONFIG = {
     'host': 'localhost',
     'user': 'root',
-    'password': 'root12',
+    'password': 'root1',
     'database': 'campus_management'
 }
 
