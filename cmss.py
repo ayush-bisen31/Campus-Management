@@ -12,8 +12,8 @@ import json
 DB_CONFIG = {
     'host': 'localhost',
     'user': 'root',
-    'password': 'root1',
-    'database': 'campus_management'
+    'password': 'root',
+    'database': 'school_management'
 }
 
 # --- Initialize Session State ---
