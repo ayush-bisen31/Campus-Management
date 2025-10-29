@@ -11,24 +11,29 @@ from sqlalchemy import create_engine, text, exc
 from urllib.parse import quote_plus  # पासवर्ड एनकोडिंग के लिए
 
 # --- Database Configuration ---
-# ये आपकी Supabase Pooler डिटेल्स हैं
+# 1. हम "Pooler" की जगह "Direct" कनेक्शन का उपयोग कर रहे हैं
 DB_USER = "postgres"
-DB_PASS = "bhrOxIP28oXtesBt"  # आपका पासवर्ड
-DB_HOST = "adb.mvvptqulrueqllvqnfrr.supabase.co"
-DB_PORT = "5432"
+DB_PASS = "AyNi@9689"  # 2. यहाँ अपना वही पासवर्ड डालें (जो आपने रीसेट किया था)
+DB_HOST = "db.mvvptqulrueqllvqnfrr.supabase.co" # 3. यह आपका नया होस्ट है
+DB_PORT = "5432" # 4. यह नया पोर्ट है
 DB_NAME = "postgres" 
 
 # Create the PostgreSQL connection string and SQLAlchemy engine
 try:
-    # पासवर्ड में '@' जैसे स्पेशल कैरेक्टर को एनकोड करें
+    # 5. पासवर्ड को एनकोड करना अभी भी ज़रूरी है (क्योंकि इसमें '@' है)
     ENCODED_PASS = quote_plus(DB_PASS)
     
-    # कनेक्शन स्ट्रिंग में ENCODED_PASS का उपयोग करें
+    # 6. हम ENCODED_PASS का उपयोग कर रहे हैं (यूजरनेम को एनकोड करने की ज़रूरत नहीं है)
     DATABASE_URL = f"postgresql://{DB_USER}:{ENCODED_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    
     engine = create_engine(DATABASE_URL)
 except Exception as e:
     st.error(f"Error creating database engine: {e}")
     st.stop()
+
+# --- Initialize Session State ---
+# (बाकी सारा कोड जैसा था वैसा ही रहेगा)
+# ...
 
 # --- Initialize Session State ---
 if 'logged_in' not in st.session_state:
