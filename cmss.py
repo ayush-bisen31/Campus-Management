@@ -1,20 +1,46 @@
 import streamlit as st
 import pandas as pd
-import mysql.connector
 from datetime import datetime, date, timedelta
 import re
 import hashlib
 import secrets
 from contextlib import contextmanager
 import json
+import sqlalchemy
+from sqlalchemy import create_engine, text, exc
+from urllib.parse import quote_plus  # 1. यह इम्पोर्ट ज़रूरी है
 
 # --- Database Configuration ---
-DB_CONFIG = {
-    'host': 'localhost',
-    'user': 'root',
-    'password': 'root1',
-    'database': 'campus_management'
-}
+# 2. हम Pooler URL का इस्तेमाल कर रहे हैं
+DB_USER = "postgres.mvvptqulrueqllvqnfrr"
+DB_PASS = "kOTB6iXEI2wB0mhB"  # 3. यहाँ अपना नया, आसान पासवर्ड डालें
+DB_HOST = "aws-1-ap-south-1.pooler.supabase.com"
+DB_PORT = "6543"
+DB_NAME = "postgres" 
+
+# Create the PostgreSQL connection string and SQLAlchemy engine
+try:
+    # 4. (यह Pooler का फिक्स है) - यूज़रनेम को एनकोड करें
+    ENCODED_USER = quote_plus(DB_USER)
+    
+    # 5. पासवर्ड को भी एनकोड करें
+    ENCODED_PASS = quote_plus(DB_PASS)
+    
+    # 6. दोनों एनकोडेड वैल्यू का इस्तेमाल करें
+    DATABASE_URL = f"postgresql://{ENCODED_USER}:{ENCODED_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    
+    engine = create_engine(DATABASE_URL)
+except Exception as e:
+    st.error(f"Error creating database engine: {e}")
+    st.stop()
+
+# --- Initialize Session State ---
+# (बाकी सारा कोड जैसा था वैसा ही रहेगा)
+# ...
+
+# --- Initialize Session State ---
+# (बाकी सारा कोड जैसा था वैसा ही रहेगा)
+# ...
 
 # --- Initialize Session State ---
 if 'logged_in' not in st.session_state:
@@ -30,97 +56,102 @@ def get_db_connection():
     """Context manager for handling database connections."""
     connection = None
     try:
-        connection = mysql.connector.connect(**DB_CONFIG)
+        connection = engine.connect()
         yield connection
-    except mysql.connector.Error as e:
+    except sqlalchemy.exc.OperationalError as e:
         st.error(f"Database connection error: {e}")
         yield None
     finally:
-        if connection and connection.is_connected():
+        if connection:
             connection.close()
 
 def init_database():
     """Initialize all required database tables if they don't exist."""
     with get_db_connection() as conn:
         if conn is None: return False
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS teachers (
-                teacher_id VARCHAR(20) PRIMARY KEY,
-                username VARCHAR(50) UNIQUE NOT NULL,
-                password VARCHAR(64) NOT NULL,
-                first_name VARCHAR(50) NOT NULL,
-                last_name VARCHAR(50) NOT NULL,
-                email VARCHAR(100) UNIQUE NOT NULL,
-                subjects JSON,
-                role ENUM('teacher', 'admin') NOT NULL DEFAULT 'teacher',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS students (
-                student_id VARCHAR(20) PRIMARY KEY,
-                first_name VARCHAR(50) NOT NULL,
-                last_name VARCHAR(50) NOT NULL,
-                email VARCHAR(100) UNIQUE NOT NULL,
-                phone VARCHAR(20) NOT NULL,
-                date_of_birth DATE NOT NULL,
-                gender ENUM('Male', 'Female', 'Other') NOT NULL,
-                course VARCHAR(100) NOT NULL,
-                year VARCHAR(20) NOT NULL,
-                semester VARCHAR(20) NOT NULL,
-                address TEXT,
-                emergency_contact VARCHAR(20),
-                enrollment_date DATE NOT NULL,
-                password VARCHAR(64) NOT NULL,
-                status ENUM('Active', 'Inactive', 'Graduated') DEFAULT 'Active',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS subjects (
-                subject_id VARCHAR(20) PRIMARY KEY,
-                name VARCHAR(100) NOT NULL UNIQUE,
-                credits INT NOT NULL
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS grades (
-                grade_id VARCHAR(20) PRIMARY KEY,
-                student_id VARCHAR(20) NOT NULL,
-                subject VARCHAR(100) NOT NULL,
-                exam_type ENUM('Mid-term', 'Final', 'Quiz', 'Assignment', 'Project') NOT NULL,
-                marks_obtained DECIMAL(5,2) NOT NULL,
-                total_marks DECIMAL(5,2) NOT NULL,
-                percentage DECIMAL(5,2) NOT NULL,
-                grade CHAR(2) NOT NULL,
-                date DATE NOT NULL,
-                teacher_id VARCHAR(20) NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (student_id) REFERENCES students(student_id) ON DELETE CASCADE,
-                FOREIGN KEY (teacher_id) REFERENCES teachers(teacher_id) ON DELETE CASCADE
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS attendance (
-                attendance_id VARCHAR(20) PRIMARY KEY,
-                student_id VARCHAR(20) NOT NULL,
-                date DATE NOT NULL,
-                subject VARCHAR(100) NOT NULL,
-                status ENUM('Present', 'Absent') NOT NULL,
-                teacher_id VARCHAR(20) NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                FOREIGN KEY (student_id) REFERENCES students(student_id) ON DELETE CASCADE,
-                FOREIGN KEY (teacher_id) REFERENCES teachers(teacher_id) ON DELETE CASCADE,
-                UNIQUE KEY unique_attendance (student_id, date, subject)
-            )
-        """)
-        conn.commit()
-        cursor.close()
-        return True
+        try:
+            # Wrap all table creation in a single transaction
+            with conn.begin():
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS teachers (
+                        teacher_id VARCHAR(20) PRIMARY KEY,
+                        username VARCHAR(50) UNIQUE NOT NULL,
+                        password VARCHAR(64) NOT NULL,
+                        first_name VARCHAR(50) NOT NULL,
+                        last_name VARCHAR(50) NOT NULL,
+                        email VARCHAR(100) UNIQUE NOT NULL,
+                        subjects JSON,
+                        role VARCHAR(10) NOT NULL DEFAULT 'teacher', -- Using VARCHAR instead of ENUM for better cross-DB compatibility
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """))
+                
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS students (
+                        student_id VARCHAR(20) PRIMARY KEY,
+                        first_name VARCHAR(50) NOT NULL,
+                        last_name VARCHAR(50) NOT NULL,
+                        email VARCHAR(100) UNIQUE NOT NULL,
+                        phone VARCHAR(20) NOT NULL,
+                        date_of_birth DATE NOT NULL,
+                        gender VARCHAR(10) NOT NULL,
+                        course VARCHAR(100) NOT NULL,
+                        year VARCHAR(20) NOT NULL,
+                        semester VARCHAR(20) NOT NULL,
+                        address TEXT,
+                        emergency_contact VARCHAR(20),
+                        enrollment_date DATE NOT NULL,
+                        password VARCHAR(64) NOT NULL,
+                        status VARCHAR(20) DEFAULT 'Active',
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """))
+                
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS subjects (
+                        subject_id VARCHAR(20) PRIMARY KEY,
+                        name VARCHAR(100) NOT NULL UNIQUE,
+                        credits INT NOT NULL
+                    )
+                """))
+                
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS grades (
+                        grade_id VARCHAR(20) PRIMARY KEY,
+                        student_id VARCHAR(20) NOT NULL,
+                        subject VARCHAR(100) NOT NULL,
+                        exam_type VARCHAR(20) NOT NULL,
+                        marks_obtained DECIMAL(5,2) NOT NULL,
+                        total_marks DECIMAL(5,2) NOT NULL,
+                        percentage DECIMAL(5,2) NOT NULL,
+                        grade CHAR(2) NOT NULL,
+                        date DATE NOT NULL,
+                        teacher_id VARCHAR(20) NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (student_id) REFERENCES students(student_id) ON DELETE CASCADE,
+                        FOREIGN KEY (teacher_id) REFERENCES teachers(teacher_id) ON DELETE CASCADE
+                    )
+                """))
+                
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS attendance (
+                        attendance_id VARCHAR(20) PRIMARY KEY,
+                        student_id VARCHAR(20) NOT NULL,
+                        date DATE NOT NULL,
+                        subject VARCHAR(100) NOT NULL,
+                        status VARCHAR(10) NOT NULL,
+                        teacher_id VARCHAR(20) NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- Removed MySQL-specific 'ON UPDATE'
+                        FOREIGN KEY (student_id) REFERENCES students(student_id) ON DELETE CASCADE,
+                        FOREIGN KEY (teacher_id) REFERENCES teachers(teacher_id) ON DELETE CASCADE,
+                        UNIQUE (student_id, date, subject) -- Standard SQL for UNIQUE constraint
+                    )
+                """))
+            return True
+        except sqlalchemy.exc.SQLAlchemyError as e:
+            st.error(f"Error during database initialization: {e}")
+            return False
 
 def hash_password(password):
     """Hash password using SHA-256 for secure storage."""
@@ -130,33 +161,40 @@ def initialize_default_data():
     """Initialize the database with a default admin user and subjects if none exist."""
     with get_db_connection() as conn:
         if conn is None: return
-        cursor = conn.cursor()
-        
-        cursor.execute("SELECT COUNT(*) FROM teachers WHERE username = 'admin'")
-        if cursor.fetchone()[0] == 0:
-            cursor.execute("""
-                INSERT INTO teachers (teacher_id, username, password, first_name, last_name, email, subjects, role)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, (
-                "TEA001", "admin", hash_password("admin123"), 
-                "Admin", "User", "admin@school.com", 
-                '["All Subjects"]', 'admin'
-            ))
-        
-        cursor.execute("SELECT COUNT(*) FROM subjects")
-        if cursor.fetchone()[0] == 0:
-            default_subjects = [
-                ("SUB001", "Data Science", 4), 
-                ("SUB002", "Computer Science", 4),
-                ("SUB003", "Machine Learning", 4),
-                ("SUB004", "Web Development", 4),
-                ("SUB005", "Database Systems", 3),
-                ("SUB006", "Software Engineering", 3)
-            ]
-            cursor.executemany("INSERT INTO subjects (subject_id, name, credits) VALUES (%s, %s, %s)", default_subjects)
-        
-        conn.commit()
-        cursor.close()
+        try:
+            with conn.begin(): # Start transaction
+                # Check for admin
+                result = conn.execute(text("SELECT COUNT(*) FROM teachers WHERE username = :user"), {"user": "admin"})
+                if result.scalar() == 0:
+                    conn.execute(text("""
+                        INSERT INTO teachers (teacher_id, username, password, first_name, last_name, email, subjects, role)
+                        VALUES (:tid, :user, :pass, :fname, :lname, :email, :subjects, :role)
+                    """), {
+                        "tid": "TEA001", 
+                        "user": "admin", 
+                        "pass": hash_password("admin123"),
+                        "fname": "Admin", 
+                        "lname": "User", 
+                        "email": "admin@school.com",
+                        "subjects": '["All Subjects"]', 
+                        "role": "admin"
+                    })
+                
+                # Check for subjects
+                result = conn.execute(text("SELECT COUNT(*) FROM subjects"))
+                if result.scalar() == 0:
+                    default_subjects = [
+                        {"id": "SUB001", "name": "Data Science", "credits": 4},
+                        {"id": "SUB002", "name": "Computer Science", "credits": 4},
+                        {"id": "SUB003", "name": "Machine Learning", "credits": 4},
+                        {"id": "SUB004", "name": "Web Development", "credits": 4},
+                        {"id": "SUB005", "name": "Database Systems", "credits": 3},
+                        {"id": "SUB006", "name": "Software Engineering", "credits": 3}
+                    ]
+                    # Use executemany with a list of dictionaries
+                    conn.execute(text("INSERT INTO subjects (subject_id, name, credits) VALUES (:id, :name, :credits)"), default_subjects)
+        except sqlalchemy.exc.SQLAlchemyError as e:
+            st.error(f"Error initializing default data: {e}")
 
 # --- Utility Functions ---
 def validate_email(email):
@@ -168,14 +206,17 @@ def generate_id(prefix, table_name, column_name):
     """Generic function to generate a new sequential ID."""
     with get_db_connection() as conn:
         if conn is None: return f"{prefix}001"
-        cursor = conn.cursor()
-        cursor.execute(f"SELECT {column_name} FROM {table_name} ORDER BY {column_name} DESC LIMIT 1")
-        result = cursor.fetchone()
-        cursor.close()
-        if result:
-            last_id = int(result[0][len(prefix):])
-            return f"{prefix}{last_id + 1:03d}"
-        return f"{prefix}001"
+        try:
+            # Use f-string for table/column names, which is safe as they are not user-input
+            query = text(f"SELECT {column_name} FROM {table_name} ORDER BY {column_name} DESC LIMIT 1")
+            result = conn.execute(query).fetchone()
+            if result:
+                last_id = int(result[0][len(prefix):])
+                return f"{prefix}{last_id + 1:03d}"
+            return f"{prefix}001"
+        except sqlalchemy.exc.SQLAlchemyError as e:
+            st.error(f"Error generating ID: {e}")
+            return f"{prefix}001"
 
 def generate_student_id():
     return generate_id("STU", "students", "student_id")
@@ -217,14 +258,20 @@ def authenticate_user(username, password, user_type):
     """Authenticate a user by checking credentials against the database."""
     with get_db_connection() as conn:
         if conn is None: return None
-        cursor = conn.cursor(dictionary=True)
-        if user_type == "student":
-            cursor.execute("SELECT * FROM students WHERE student_id = %s AND password = %s", (username, hash_password(password)))
-        else: # teacher or admin
-            cursor.execute("SELECT * FROM teachers WHERE username = %s AND password = %s", (username, hash_password(password)))
-        user = cursor.fetchone()
-        cursor.close()
-        return user
+        hashed_pass = hash_password(password)
+        try:
+            if user_type == "student":
+                query = text("SELECT * FROM students WHERE student_id = :user AND password = :pass")
+            else: # teacher or admin
+                query = text("SELECT * FROM teachers WHERE username = :user AND password = :pass")
+            
+            result = conn.execute(query, {"user": username, "pass": hashed_pass})
+            # .mappings().fetchone() returns a dict-like object (replaces dictionary=True)
+            user = result.mappings().fetchone()
+            return user
+        except sqlalchemy.exc.SQLAlchemyError as e:
+            st.error(f"Authentication error: {e}")
+            return None
 
 def login_page():
     """Display the main login interface."""
@@ -272,32 +319,54 @@ def logout():
     st.session_state.logged_in = False
     st.session_state.user_type = None
     st.session_state.current_user = None
+    st.rerun()
 
 # --- Data Retrieval Functions ---
+# pd.read_sql works fine with the SQLAlchemy connection and %s param style for psycopg2
 def get_student_grades(student_id):
     with get_db_connection() as conn:
         if conn is None: return []
-        return pd.read_sql("SELECT * FROM grades WHERE student_id = %s ORDER BY date DESC", conn, params=(student_id,)).to_dict('records')
+        try:
+            return pd.read_sql("SELECT * FROM grades WHERE student_id = %s ORDER BY date DESC", conn, params=(student_id,)).to_dict('records')
+        except Exception as e:
+            st.error(f"Error fetching grades: {e}")
+            return []
 
 def get_student_attendance(student_id):
     with get_db_connection() as conn:
         if conn is None: return []
-        return pd.read_sql("SELECT * FROM attendance WHERE student_id = %s ORDER BY date DESC", conn, params=(student_id,)).to_dict('records')
+        try:
+            return pd.read_sql("SELECT * FROM attendance WHERE student_id = %s ORDER BY date DESC", conn, params=(student_id,)).to_dict('records')
+        except Exception as e:
+            st.error(f"Error fetching attendance: {e}")
+            return []
 
 def get_all_students():
     with get_db_connection() as conn:
         if conn is None: return []
-        return pd.read_sql("SELECT * FROM students ORDER BY first_name, last_name", conn).to_dict('records')
+        try:
+            return pd.read_sql("SELECT * FROM students ORDER BY first_name, last_name", conn).to_dict('records')
+        except Exception as e:
+            st.error(f"Error fetching students: {e}")
+            return []
 
 def get_all_teachers():
     with get_db_connection() as conn:
         if conn is None: return []
-        return pd.read_sql("SELECT teacher_id, username, first_name, last_name, email, role FROM teachers ORDER BY first_name", conn).to_dict('records')
+        try:
+            return pd.read_sql("SELECT teacher_id, username, first_name, last_name, email, role FROM teachers ORDER BY first_name", conn).to_dict('records')
+        except Exception as e:
+            st.error(f"Error fetching teachers: {e}")
+            return []
 
 def get_all_subjects():
     with get_db_connection() as conn:
         if conn is None: return []
-        return pd.read_sql("SELECT * FROM subjects ORDER BY name", conn).to_dict('records')
+        try:
+            return pd.read_sql("SELECT * FROM subjects ORDER BY name", conn).to_dict('records')
+        except Exception as e:
+            st.error(f"Error fetching subjects: {e}")
+            return []
 
 # --- Admin Dashboard Functions ---
 def admin_dashboard():
@@ -402,12 +471,19 @@ def manage_teachers_admin():
                         try:
                             teacher_id = generate_teacher_id()
                             with get_db_connection() as conn:
-                                cursor = conn.cursor()
-                                cursor.execute("""
-                                    INSERT INTO teachers (teacher_id, username, password, first_name, last_name, email, role)
-                                    VALUES (%s, %s, %s, %s, %s, %s, 'teacher')
-                                """, (teacher_id, username, hash_password(password), first_name, last_name, email))
-                                conn.commit()
+                                if conn is None: raise Exception("Database connection failed")
+                                with conn.begin(): # Start transaction
+                                    conn.execute(text("""
+                                        INSERT INTO teachers (teacher_id, username, password, first_name, last_name, email, role)
+                                        VALUES (:tid, :user, :pass, :fname, :lname, :email, 'teacher')
+                                    """), {
+                                        "tid": teacher_id,
+                                        "user": username,
+                                        "pass": hash_password(password),
+                                        "fname": first_name,
+                                        "lname": last_name,
+                                        "email": email
+                                    })
                             
                             st.session_state.new_teacher_credentials = {
                                 'id': teacher_id,
@@ -415,13 +491,15 @@ def manage_teachers_admin():
                                 'password': password if show_password else None
                             }
                             st.rerun()
-                        except mysql.connector.IntegrityError as e:
-                            if "username" in str(e):
+                        except sqlalchemy.exc.IntegrityError as e:
+                            if "username" in str(e).lower():
                                 st.error("Username already exists!")
-                            elif "email" in str(e):
+                            elif "email" in str(e).lower():
                                 st.error("Email already exists!")
                             else:
                                 st.error(f"Error adding teacher: {e}")
+                        except Exception as e:
+                            st.error(f"An error occurred: {e}")
 
     st.markdown("---")
     st.write("**All Teachers List**")
@@ -453,41 +531,50 @@ def manage_teachers_admin():
                     
                     if st.button("Generate & Set New Password", key=f"gen_teacher_pw_{teacher_id}"):
                         new_pw = generate_password()
-                        with get_db_connection() as conn:
-                            cursor = conn.cursor()
-                            cursor.execute("UPDATE teachers SET password = %s WHERE teacher_id = %s", 
-                                           (hash_password(new_pw), teacher_id))
-                            conn.commit()
-                        st.session_state.teacher_password_reset_info = {
-                            'teacher_id': teacher_id, 
-                            'new_password': new_pw
-                        }
-                        st.rerun()
+                        try:
+                            with get_db_connection() as conn:
+                                if conn is None: raise Exception("Database connection failed")
+                                with conn.begin():
+                                    conn.execute(text("UPDATE teachers SET password = :pass WHERE teacher_id = :tid"),
+                                                 {"pass": hash_password(new_pw), "tid": teacher_id})
+                            st.session_state.teacher_password_reset_info = {
+                                'teacher_id': teacher_id, 
+                                'new_password': new_pw
+                            }
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error resetting password: {e}")
 
                     with st.form(key=f"custom_teacher_pw_{teacher_id}"):
                         st.write("Or, set a custom password:")
                         custom_pw = st.text_input("New Custom Password", type="password", key=f"custom_pwd_{teacher_id}")
                         if st.form_submit_button("Set Custom Password"):
                             if custom_pw:
-                                with get_db_connection() as conn:
-                                    cursor = conn.cursor()
-                                    cursor.execute("UPDATE teachers SET password = %s WHERE teacher_id = %s", 
-                                                   (hash_password(custom_pw), teacher_id))
-                                    conn.commit()
-                                st.success(f"Successfully set a new password for {teacher_id}.")
+                                try:
+                                    with get_db_connection() as conn:
+                                        if conn is None: raise Exception("Database connection failed")
+                                        with conn.begin():
+                                            conn.execute(text("UPDATE teachers SET password = :pass WHERE teacher_id = :tid"),
+                                                         {"pass": hash_password(custom_pw), "tid": teacher_id})
+                                    st.success(f"Successfully set a new password for {teacher_id}.")
+                                except Exception as e:
+                                    st.error(f"Error setting password: {e}")
                             else:
                                 st.warning("Password cannot be empty.")
                     
                     st.markdown("---")
                     if st.button("🗑️ Delete This Teacher", type="primary", key=f"del_teacher_{teacher_id}"):
-                        with get_db_connection() as conn:
-                            cursor = conn.cursor()
-                            cursor.execute("DELETE FROM teachers WHERE teacher_id = %s", (teacher_id,))
-                            conn.commit()
-                        st.success(f"Teacher {teacher_id} has been deleted.")
-                        st.rerun()
+                        try:
+                            with get_db_connection() as conn:
+                                if conn is None: raise Exception("Database connection failed")
+                                with conn.begin():
+                                    conn.execute(text("DELETE FROM teachers WHERE teacher_id = :tid"), {"tid": teacher_id})
+                            st.success(f"Teacher {teacher_id} has been deleted.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error deleting teacher: {e}")
         else:
-            st.info("No teachers found. Add some teachers above.")
+            st.info("No teachers found (besides admin). Add some teachers above.")
 
 def manage_subjects_admin():
     """Admin interface for managing subjects."""
@@ -501,13 +588,16 @@ def manage_subjects_admin():
             try:
                 subject_id = generate_id("SUB", "subjects", "subject_id")
                 with get_db_connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute("INSERT INTO subjects (subject_id, name, credits) VALUES (%s, %s, %s)", (subject_id, name, credits))
-                    conn.commit()
+                    if conn is None: raise Exception("Database connection failed")
+                    with conn.begin():
+                        conn.execute(text("INSERT INTO subjects (subject_id, name, credits) VALUES (:sid, :name, :credits)"),
+                                     {"sid": subject_id, "name": name, "credits": credits})
                     st.success(f"Subject '{name}' added!")
                     st.rerun()
-            except mysql.connector.IntegrityError:
+            except sqlalchemy.exc.IntegrityError:
                 st.error("Subject name already exists!")
+            except Exception as e:
+                st.error(f"Error adding subject: {e}")
 
     subjects = get_all_subjects()
     if subjects:
@@ -547,11 +637,17 @@ def teacher_home():
     
     with get_db_connection() as conn:
         if conn:
-            recent_grades = pd.read_sql("""
-                SELECT COUNT(*) as count FROM grades 
-                WHERE teacher_id = %s AND date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
-            """, conn, params=(st.session_state.current_user['teacher_id'],))
-            col3.metric("Grades This Week", recent_grades['count'].iloc[0] if not recent_grades.empty else 0)
+            try:
+                # Fixed MySQL-specific DATE_SUB/CURDATE to Postgres equivalent
+                recent_grades = pd.read_sql("""
+                    SELECT COUNT(*) as count FROM grades 
+                    WHERE teacher_id = %s AND date >= (CURRENT_DATE - INTERVAL '7 days')
+                """, conn, params=(st.session_state.current_user['teacher_id'],))
+                col3.metric("Grades This Week", recent_grades['count'].iloc[0] if not recent_grades.empty else 0)
+            except Exception as e:
+                st.error(f"Error loading dashboard stats: {e}")
+                col3.metric("Grades This Week", "Error")
+
 
 def teacher_record_grades():
     """Teacher interface for recording grades."""
@@ -596,13 +692,17 @@ def teacher_record_grades():
                 
                 try:
                     with get_db_connection() as conn:
-                        cursor = conn.cursor()
-                        cursor.execute("""
-                            INSERT INTO grades (grade_id, student_id, subject, exam_type, marks_obtained, total_marks, percentage, grade, date, teacher_id)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        """, (grade_id, student_id, selected_subject, exam_type, marks_obtained, total_marks, percentage, grade, exam_date, st.session_state.current_user['teacher_id']))
-                        conn.commit()
-                        st.success(f"Grade recorded successfully! Grade: {grade} ({percentage:.1f}%)")
+                        if conn is None: raise Exception("Database connection failed")
+                        with conn.begin():
+                            conn.execute(text("""
+                                INSERT INTO grades (grade_id, student_id, subject, exam_type, marks_obtained, total_marks, percentage, grade, date, teacher_id)
+                                VALUES (:gid, :sid, :sub, :etype, :mobt, :mtot, :perc, :grade, :date, :tid)
+                            """), {
+                                "gid": grade_id, "sid": student_id, "sub": selected_subject, "etype": exam_type,
+                                "mobt": marks_obtained, "mtot": total_marks, "perc": percentage,
+                                "grade": grade, "date": exam_date, "tid": st.session_state.current_user['teacher_id']
+                            })
+                    st.success(f"Grade recorded successfully! Grade: {grade} ({percentage:.1f}%)")
                 except Exception as e:
                     st.error(f"Error recording grade: {e}")
             else:
@@ -613,20 +713,23 @@ def teacher_record_grades():
     
     with get_db_connection() as conn:
         if conn:
-            recent_grades = pd.read_sql("""
-                SELECT g.grade_id, g.student_id, s.first_name, s.last_name, g.subject, g.exam_type, 
-                       g.marks_obtained, g.total_marks, g.percentage, g.grade, g.date
-                FROM grades g
-                JOIN students s ON g.student_id = s.student_id
-                WHERE g.teacher_id = %s
-                ORDER BY g.date DESC
-                LIMIT 10
-            """, conn, params=(st.session_state.current_user['teacher_id'],))
-            
-            if not recent_grades.empty:
-                st.dataframe(recent_grades, use_container_width=True)
-            else:
-                st.info("No grades recorded by you yet.")
+            try:
+                recent_grades = pd.read_sql("""
+                    SELECT g.grade_id, g.student_id, s.first_name, s.last_name, g.subject, g.exam_type, 
+                           g.marks_obtained, g.total_marks, g.percentage, g.grade, g.date
+                    FROM grades g
+                    JOIN students s ON g.student_id = s.student_id
+                    WHERE g.teacher_id = %s
+                    ORDER BY g.date DESC
+                    LIMIT 10
+                """, conn, params=(st.session_state.current_user['teacher_id'],))
+                
+                if not recent_grades.empty:
+                    st.dataframe(recent_grades, use_container_width=True)
+                else:
+                    st.info("No grades recorded by you yet.")
+            except Exception as e:
+                st.error(f"Error loading recent grades: {e}")
 
 def teacher_mark_attendance():
     """Teacher interface for marking attendance."""
@@ -653,13 +756,15 @@ def teacher_mark_attendance():
         st.markdown("---")
         st.subheader(f"Marking Attendance for {selected_subject} on {attendance_date}")
 
+        existing_attendance = {}
         with get_db_connection() as conn:
             if conn:
-                query = "SELECT student_id, status FROM attendance WHERE date = %s AND subject = %s"
-                existing_df = pd.read_sql(query, conn, params=(attendance_date, selected_subject))
-                existing_attendance = dict(zip(existing_df['student_id'], existing_df['status']))
-            else:
-                existing_attendance = {}
+                try:
+                    query = "SELECT student_id, status FROM attendance WHERE date = %s AND subject = %s"
+                    existing_df = pd.read_sql(query, conn, params=(attendance_date, selected_subject))
+                    existing_attendance = dict(zip(existing_df['student_id'], existing_df['status']))
+                except Exception as e:
+                    st.error(f"Error loading existing attendance: {e}")
         
         with st.form("attendance_form"):
             attendance_data = {}
@@ -682,28 +787,33 @@ def teacher_mark_attendance():
             if st.form_submit_button("Save Attendance"):
                 try:
                     with get_db_connection() as conn:
-                        cursor = conn.cursor()
+                        if conn is None: raise Exception("Database connection failed")
+                        
+                        # Use list of dicts for executemany with named parameters
                         records_to_insert = []
                         for student_id, status in attendance_data.items():
-                            records_to_insert.append((
-                                generate_attendance_id(),
-                                student_id,
-                                attendance_date,
-                                selected_subject,
-                                status,
-                                st.session_state.current_user['teacher_id']
-                            ))
+                            records_to_insert.append({
+                                "aid": generate_attendance_id(),
+                                "sid": student_id,
+                                "date": attendance_date,
+                                "sub": selected_subject,
+                                "status": status,
+                                "tid": st.session_state.current_user['teacher_id']
+                            })
                         
-                        delete_query = "DELETE FROM attendance WHERE date = %s AND subject = %s"
-                        cursor.execute(delete_query, (attendance_date, selected_subject))
+                        with conn.begin(): # Start transaction
+                            # Delete existing records for this day/subject first
+                            delete_query = text("DELETE FROM attendance WHERE date = :date AND subject = :subject")
+                            conn.execute(delete_query, {"date": attendance_date, "subject": selected_subject})
 
-                        insert_query = """
-                            INSERT INTO attendance (attendance_id, student_id, date, subject, status, teacher_id)
-                            VALUES (%s, %s, %s, %s, %s, %s)
-                        """
-                        cursor.executemany(insert_query, records_to_insert)
+                            # Insert all new records
+                            insert_query = text("""
+                                INSERT INTO attendance (attendance_id, student_id, date, subject, status, teacher_id)
+                                VALUES (:aid, :sid, :date, :sub, :status, :tid)
+                            """)
+                            if records_to_insert:
+                                conn.execute(insert_query, records_to_insert)
                         
-                        conn.commit()
                         st.success("Attendance saved successfully!")
                         st.rerun()
                 except Exception as e:
@@ -782,7 +892,7 @@ def student_home():
     
     col1, col2, col3 = st.columns(3)
     if grades:
-        avg_percentage = sum(g['percentage'] for g in grades) / len(grades)
+        avg_percentage = sum(float(g['percentage']) for g in grades) / len(grades) # Ensure float
         col1.metric("Overall Average", f"{avg_percentage:.1f}%")
     else:
         col1.metric("Overall Average", "N/A")
@@ -803,6 +913,9 @@ def student_view_grades():
     
     if grades:
         df_grades = pd.DataFrame(grades)
+        # Ensure percentage is numeric for aggregation
+        df_grades['percentage'] = pd.to_numeric(df_grades['percentage'])
+        
         st.dataframe(df_grades[['subject', 'exam_type', 'marks_obtained', 'total_marks', 'percentage', 'grade', 'date']], use_container_width=True)
         
         st.markdown("---")
@@ -851,12 +964,12 @@ def student_profile():
     st.subheader("👤 Your Profile")
     user = st.session_state.current_user
     
+    # Use .get() to avoid errors if a key is missing
     st.write(f"**Student ID:** {user.get('student_id', 'N/A')}")
     st.write(f"**Name:** {user.get('first_name', '')} {user.get('last_name', '')}")
     st.write(f"**Email:** {user.get('email', 'N/A')}")
     st.write(f"**Phone:** {user.get('phone', 'N/A')}")
     st.write(f"**Date of Birth:** {user.get('date_of_birth', 'N/A')}")
-    st.write(f"**Gender:** {user.get('gender', 'N/A')}")
     st.write(f"**Gender:** {user.get('gender', 'N/A')}")
     st.write(f"**Course:** {user.get('course', 'N/A')}")
     st.write(f"**Year & Semester:** {user.get('year', '')}, {user.get('semester', '')}")
@@ -912,7 +1025,7 @@ def add_student_form():
                 last_name = st.text_input("Last Name*")
                 email = st.text_input("Email*")
                 phone = st.text_input("Phone Number*")
-                date_of_birth = st.date_input("Date of Birth*", value=date.today() - timedelta(days=6570))
+                date_of_birth = st.date_input("Date of Birth*", value=date.today() - timedelta(days=6570)) # Default to ~18 years
             with col2:
                 # The 'year' is already selected outside, so we just show other course fields here.
                 st.write("‎") # Empty space for alignment
@@ -965,22 +1078,30 @@ def add_student_form():
                     try:
                         student_id = generate_student_id()
                         with get_db_connection() as conn:
-                            cursor = conn.cursor()
-                            cursor.execute("""
-                                INSERT INTO students (student_id, first_name, last_name, email, phone, date_of_birth, 
-                                                      gender, course, year, semester, enrollment_date, password, status)
-                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Active')
-                            """, (student_id, first_name, last_name, email, phone, date_of_birth, 
-                                  gender, course, year, semester, date.today(), hash_password(password)))
-                            conn.commit()
+                            if conn is None: raise Exception("Database connection failed")
+                            with conn.begin():
+                                conn.execute(text("""
+                                    INSERT INTO students (student_id, first_name, last_name, email, phone, date_of_birth, 
+                                                          gender, course, year, semester, enrollment_date, password, status)
+                                    VALUES (:sid, :fname, :lname, :email, :phone, :dob, :gender, :course, :year, :sem, :edate, :pass, 'Active')
+                                """), {
+                                    "sid": student_id, "fname": first_name, "lname": last_name, "email": email, "phone": phone,
+                                    "dob": date_of_birth, "gender": gender, "course": course, "year": year, "sem": semester,
+                                    "edate": date.today(), "pass": hash_password(password)
+                                })
                         
                         st.session_state.new_student_credentials = {
                             "id": student_id,
                             "password": password if show_password_in_message else None
                         }
                         st.rerun()
-                    except mysql.connector.IntegrityError as e:
-                        st.error(f"Database error: {e}")
+                    except sqlalchemy.exc.IntegrityError as e:
+                        if "email" in str(e).lower():
+                            st.error("Email already exists!")
+                        else:
+                            st.error(f"Database error: {e}")
+                    except Exception as e:
+                        st.error(f"An error occurred: {e}")
 
 def student_management_interface(can_delete=False):
     """A reusable UI component for viewing and managing students."""
@@ -1003,7 +1124,7 @@ def student_management_interface(can_delete=False):
         del st.session_state.password_reset_info
 
     student_options = {f"{s['student_id']} - {s['first_name']} {s['last_name']}": s['student_id'] for s in students}
-    selected_label = st.selectbox("Select a student to manage", [""] + list(student_options.keys()))
+    selected_label = st.selectbox("Select a student to manage", [""] + list(student_options.keys()), key="student_manage_select")
 
     if selected_label:
         student_id = student_options[selected_label]
@@ -1013,35 +1134,46 @@ def student_management_interface(can_delete=False):
             
             if st.button("Generate & Set New Password", key=f"gen_pw_{student_id}"):
                 new_pw = generate_password()
-                with get_db_connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute("UPDATE students SET password = %s WHERE student_id = %s", (hash_password(new_pw), student_id))
-                    conn.commit()
-                st.session_state.password_reset_info = {'student_id': student_id, 'new_password': new_pw}
-                st.rerun()
+                try:
+                    with get_db_connection() as conn:
+                        if conn is None: raise Exception("Database connection failed")
+                        with conn.begin():
+                            conn.execute(text("UPDATE students SET password = :pass WHERE student_id = :sid"),
+                                         {"pass": hash_password(new_pw), "sid": student_id})
+                    st.session_state.password_reset_info = {'student_id': student_id, 'new_password': new_pw}
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error resetting password: {e}")
 
             with st.form(key=f"custom_pw_{student_id}"):
                 st.write("Or, set a custom password:")
                 custom_pw = st.text_input("New Custom Password", type="password", key=f"custom_pwd_{student_id}")
                 if st.form_submit_button("Set Custom Password"):
                     if custom_pw:
-                        with get_db_connection() as conn:
-                            cursor = conn.cursor()
-                            cursor.execute("UPDATE students SET password = %s WHERE student_id = %s", (hash_password(custom_pw), student_id))
-                            conn.commit()
-                        st.success(f"Successfully set a new password for {student_id}.")
+                        try:
+                            with get_db_connection() as conn:
+                                if conn is None: raise Exception("Database connection failed")
+                                with conn.begin():
+                                    conn.execute(text("UPDATE students SET password = :pass WHERE student_id = :sid"),
+                                                 {"pass": hash_password(custom_pw), "sid": student_id})
+                            st.success(f"Successfully set a new password for {student_id}.")
+                        except Exception as e:
+                            st.error(f"Error setting password: {e}")
                     else:
                         st.warning("Password cannot be empty.")
             
             if can_delete:
                 st.markdown("---")
                 if st.button("🗑️ Delete This Student", type="primary", key=f"del_student_{student_id}"):
-                    with get_db_connection() as conn:
-                        cursor = conn.cursor()
-                        cursor.execute("DELETE FROM students WHERE student_id = %s", (student_id,))
-                        conn.commit()
-                    st.success(f"Student {student_id} has been deleted.")
-                    st.rerun()
+                    try:
+                        with get_db_connection() as conn:
+                            if conn is None: raise Exception("Database connection failed")
+                            with conn.begin():
+                                conn.execute(text("DELETE FROM students WHERE student_id = :sid"), {"sid": student_id})
+                        st.success(f"Student {student_id} has been deleted.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error deleting student: {e}")
 
 def manage_students_admin():
     """Admin interface for managing students."""
@@ -1053,7 +1185,7 @@ def teacher_manage_students():
     """Teacher interface for managing students."""
     st.subheader("👨‍🎓 Student Management")
     add_student_form()
-    student_management_interface(can_delete=False)
+    student_management_interface(can_delete=False) # Teachers can't delete
 
 # --- Main Application Logic ---
 def main():
@@ -1061,12 +1193,14 @@ def main():
     st.set_page_config(page_title="School Management System", layout="wide", page_icon="🎓")
     
     if 'db_initialized' not in st.session_state:
+        st.info("Initializing database... Please wait.")
         if init_database():
             initialize_default_data()
             st.session_state.db_initialized = True
+            st.rerun()
         else:
-            st.error("DATABASE INITIALIZATION FAILED. Please check your DB_CONFIG and ensure the MySQL server is running.")
-            return
+            st.error("DATABASE INITIALIZATION FAILED. Please check your database credentials and ensure the Postgres server is running.")
+            st.stop()
 
     if not st.session_state.get('logged_in'):
         login_page()
@@ -1078,6 +1212,9 @@ def main():
             teacher_dashboard()
         elif user_type == "student":
             student_dashboard()
+        else:
+            st.error("Unknown user type. Logging out.")
+            logout()
 
 if __name__ == "__main__":
     main()
