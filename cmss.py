@@ -1,12 +1,12 @@
 import streamlit as st
 import pandas as pd
-import mysql.connector
 from datetime import datetime, date, timedelta
 import re
 import hashlib
 import secrets
 from contextlib import contextmanager
 import json
+from sqlalchemy import create_engine, text
 
 # --- Database Configuration ---
 DB_CONFIG = {
