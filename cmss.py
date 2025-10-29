@@ -8,28 +8,35 @@ from contextlib import contextmanager
 import json
 import sqlalchemy
 from sqlalchemy import create_engine, text, exc
-from urllib.parse import quote_plus  # पासवर्ड एनकोडिंग के लिए
+from urllib.parse import quote_plus  # 1. यह इम्पोर्ट ज़रूरी है
 
 # --- Database Configuration ---
-# 1. हम "Pooler" की जगह "Direct" कनेक्शन का उपयोग कर रहे हैं
+# 2. हम Pooler URL का इस्तेमाल कर रहे हैं
 DB_USER = "postgres.mvvptqulrueqllvqnfrr"
-DB_PASS = "kOTB6iXEI2wB0mhB"  # 2. यहाँ अपना वही पासवर्ड डालें (जो आपने रीसेट किया था)
-DB_HOST = "aws-1-ap-south-1.pooler.supabase.com" # 3. यह आपका नया होस्ट है
-DB_PORT = "6543" # 4. यह नया पोर्ट है
+DB_PASS = "kOTB6iXEI2wB0mhB"  # 3. यहाँ अपना नया, आसान पासवर्ड डालें
+DB_HOST = "aws-1-ap-south-1.pooler.supabase.com"
+DB_PORT = "6543"
 DB_NAME = "postgres" 
 
 # Create the PostgreSQL connection string and SQLAlchemy engine
 try:
-    # 5. पासवर्ड को एनकोड करना अभी भी ज़रूरी है (क्योंकि इसमें '@' है)
+    # 4. (यह Pooler का फिक्स है) - यूज़रनेम को एनकोड करें
+    ENCODED_USER = quote_plus(DB_USER)
+    
+    # 5. पासवर्ड को भी एनकोड करें
     ENCODED_PASS = quote_plus(DB_PASS)
     
-    # 6. हम ENCODED_PASS का उपयोग कर रहे हैं (यूजरनेम को एनकोड करने की ज़रूरत नहीं है)
-    DATABASE_URL = f"postgresql://{DB_USER}:{ENCODED_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    # 6. दोनों एनकोडेड वैल्यू का इस्तेमाल करें
+    DATABASE_URL = f"postgresql://{ENCODED_USER}:{ENCODED_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
     
     engine = create_engine(DATABASE_URL)
 except Exception as e:
     st.error(f"Error creating database engine: {e}")
     st.stop()
+
+# --- Initialize Session State ---
+# (बाकी सारा कोड जैसा था वैसा ही रहेगा)
+# ...
 
 # --- Initialize Session State ---
 # (बाकी सारा कोड जैसा था वैसा ही रहेगा)
