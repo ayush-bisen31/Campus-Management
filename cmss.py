@@ -10,10 +10,13 @@ import json
 
 # --- Database Configuration ---
 DB_CONFIG = {
-    'host': 'localhost',
+    'host': '35.193.198.62',  # Your Public IP from screenshot
     'user': 'root',
-    'password': 'root1',
-    'database': 'campus_management'
+    'password': 'AyNi@9689',  # Apna actual password yahan dalein
+    'database': 'Campus_management',
+    'port': 3306,
+    'connect_timeout': 10,
+    'autocommit': False
 }
 
 # --- Initialize Session State ---
