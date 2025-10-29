@@ -14,8 +14,8 @@ from urllib.parse import quote_plus  # पासवर्ड एनकोडि�
 # 1. हम "Pooler" की जगह "Direct" कनेक्शन का उपयोग कर रहे हैं
 DB_USER = "postgres"
 DB_PASS = "kOTB6iXEI2wB0mhB"  # 2. यहाँ अपना वही पासवर्ड डालें (जो आपने रीसेट किया था)
-DB_HOST = "db.mvvptqulrueqllvqnfrr.supabase.co" # 3. यह आपका नया होस्ट है
-DB_PORT = "5432" # 4. यह नया पोर्ट है
+DB_HOST = "aws-1-ap-south-1.pooler.supabase.com" # 3. यह आपका नया होस्ट है
+DB_PORT = "6543" # 4. यह नया पोर्ट है
 DB_NAME = "postgres" 
 
 # Create the PostgreSQL connection string and SQLAlchemy engine
