@@ -8,18 +8,23 @@ from contextlib import contextmanager
 import json
 import sqlalchemy
 from sqlalchemy import create_engine, text, exc
+from urllib.parse import quote_plus  # पासवर्ड एनकोडिंग के लिए
 
 # --- Database Configuration ---
-# Use the credentials you provided for your Supabase Postgres database
+# ये आपकी Supabase Pooler डिटेल्स हैं
 DB_USER = "postgres"
-DB_PASS = "AyNi@9689"
-DB_HOST = "db.tzhdtlizbdlyiyfmeaca.supabase.co"
+DB_PASS = "bhrOxIP28oXtesBt"  # आपका पासवर्ड
+DB_HOST = "adb.mvvptqulrueqllvqnfrr.supabase.co"
 DB_PORT = "5432"
-DB_NAME = "CAMPUS MANAGEMENT SYSTEM"  # As you specified
+DB_NAME = "postgres" 
 
 # Create the PostgreSQL connection string and SQLAlchemy engine
 try:
-    DATABASE_URL = "postgresql://postgres:AyNi@9689@db.tzhdtlizbdlyiyfmeaca.supabase.co:5432/postgres"
+    # पासवर्ड में '@' जैसे स्पेशल कैरेक्टर को एनकोड करें
+    ENCODED_PASS = quote_plus(DB_PASS)
+    
+    # कनेक्शन स्ट्रिंग में ENCODED_PASS का उपयोग करें
+    DATABASE_URL = f"postgresql://{DB_USER}:{ENCODED_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
     engine = create_engine(DATABASE_URL)
 except Exception as e:
     st.error(f"Error creating database engine: {e}")
