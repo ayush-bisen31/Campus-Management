@@ -13,7 +13,7 @@ from urllib.parse import quote_plus  # 1. यह इम्पोर्ट ज़
 # --- Database Configuration ---
 # 2. हम Pooler URL का इस्तेमाल कर रहे हैं
 DB_USER = "postgres.mvvptqulrueqllvqnfrr"
-DB_PASS = "AN"  # 3. यहाँ अपना नया, आसान पासवर्ड डालें
+DB_PASS = "kOTB6iXEI2wB0mhB"  # 3. यहाँ अपना नया, आसान पासवर्ड डालें
 DB_HOST = "aws-1-ap-south-1.pooler.supabase.com"
 DB_PORT = "6543"
 DB_NAME = "postgres" 
