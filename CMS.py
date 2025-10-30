@@ -228,7 +228,7 @@ def authenticate_user(username, password, user_type):
 
 def login_page():
     """Display the main login interface."""
-    st.title("🎓 School Management System")
+    st.title("🎓 Campus Management System")
     st.markdown("---")
     
     tab1, tab2 = st.tabs(["👨‍🎓 Student Login", "👨‍🏫 Staff Login (Teacher/Admin)"])
@@ -1058,7 +1058,7 @@ def teacher_manage_students():
 # --- Main Application Logic ---
 def main():
     """The main function to run the Streamlit application."""
-    st.set_page_config(page_title="School Management System", layout="wide", page_icon="🎓")
+    st.set_page_config(page_title="Campus Management System", layout="wide", page_icon="🎓")
     
     if 'db_initialized' not in st.session_state:
         if init_database():
