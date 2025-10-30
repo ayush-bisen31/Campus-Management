@@ -1029,10 +1029,15 @@ def add_student_form():
                 # The 'year' is already selected outside, so we just show other course fields here.
                 st.write("‎") # Empty space for alignment
                 gender = st.selectbox("Gender*", ["Male", "Female", "Other"])
+                address = st.text_area("Address*", placeholder="Enter complete address")
+                emergency_contact_name = st.text_input("Emergency Contact Name", placeholder="Parent/Guardian name")
                 course = st.selectbox("Course*", ["Data Science", "Computer Science", "Machine Learning", "Web Development", "Software Engineering"])
                 
                 # The semester dropdown now correctly uses the options calculated outside the form.
                 semester = st.selectbox("Semester*", semester_options)
+                
+               
+                
 
             st.markdown("---")
             
